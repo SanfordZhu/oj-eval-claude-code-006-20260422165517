@@ -70,13 +70,15 @@ static void unknown_neighbors(int r, int c, std::vector<std::pair<int,int>>& out
  * @brief The definition of function Decide()
  */
 void Decide() {
-  // Rule 1: auto-explore when marked equals number
+  // Rule 1: auto-explore when marked equals number and there exists unknown neighbor
   for (int r = 0; r < rows; ++r) {
     for (int c = 0; c < columns; ++c) {
       if (view_map[r][c] >= '0' && view_map[r][c] <= '8') {
         int num = view_map[r][c] - '0';
         int marked = count_marked_around(r, c);
-        if (marked == num) {
+        std::vector<std::pair<int,int>> unk;
+        unknown_neighbors(r, c, unk);
+        if (marked == num && !unk.empty()) {
           Execute(r, c, 2);
           return;
         }
