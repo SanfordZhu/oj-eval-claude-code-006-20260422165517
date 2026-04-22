@@ -3,6 +3,7 @@
 
 #include <cstdlib>
 #include <iostream>
+#include <queue>
 
 /*
  * You may need to define some global variables for the information of the game map here.
@@ -16,154 +17,190 @@ int total_mines;  // The count of mines of the game map. You MUST NOT modify its
                   // variable in function InitMap. It will be used in the advanced task.
 int game_state;  // The state of the game, 0 for continuing, 1 for winning, -1 for losing. You MUST NOT modify its name.
 
+static bool is_mine[35][35];
+static bool visited[35][35];
+static bool marked[35][35];
+static int mine_cnt[35][35];
+static int fail_r = -1, fail_c = -1;
+
+static const int dr[8] = {-1,-1,-1,0,0,1,1,1};
+static const int dc[8] = {-1,0,1,-1,1,-1,0,1};
+
+static inline bool in_bounds(int r, int c) { return r >= 0 && r < rows && c >= 0 && c < columns; }
+
+static void compute_counts() {
+  for (int r = 0; r < rows; ++r) {
+    for (int c = 0; c < columns; ++c) {
+      int cnt = 0;
+      for (int k = 0; k < 8; ++k) {
+        int nr = r + dr[k], nc = c + dc[k];
+        if (in_bounds(nr, nc) && is_mine[nr][nc]) ++cnt;
+      }
+      mine_cnt[r][c] = cnt;
+    }
+  }
+}
+
+static void visit_zero_fill(int sr, int sc) {
+  std::queue<std::pair<int,int>> q;
+  q.emplace(sr, sc);
+  visited[sr][sc] = true;
+  while (!q.empty()) {
+    auto [r, c] = q.front(); q.pop();
+    if (mine_cnt[r][c] != 0) continue;
+    for (int k = 0; k < 8; ++k) {
+      int nr = r + dr[k], nc = c + dc[k];
+      if (!in_bounds(nr, nc)) continue;
+      if (visited[nr][nc]) continue;
+      if (marked[nr][nc]) continue;
+      if (is_mine[nr][nc]) continue;
+      visited[nr][nc] = true;
+      if (mine_cnt[nr][nc] == 0) q.emplace(nr, nc);
+    }
+  }
+}
+
+static void check_win() {
+  for (int r = 0; r < rows; ++r) {
+    for (int c = 0; c < columns; ++c) {
+      if (!is_mine[r][c] && !visited[r][c]) { game_state = 0; return; }
+    }
+  }
+  game_state = 1;
+}
+
 /**
  * @brief The definition of function InitMap()
- *
- * @details This function is designed to read the initial map from stdin. For example, if there is a 3 * 3 map in which
- * mines are located at (0, 1) and (1, 2) (0-based), the stdin would be
- *     3 3
- *     .X.
- *     ...
- *     ..X
- * where X stands for a mine block and . stands for a normal block. After executing this function, your game map
- * would be initialized, with all the blocks unvisited.
  */
 void InitMap() {
   std::cin >> rows >> columns;
-  // TODO (student): Implement me!
+  total_mines = 0;
+  game_state = 0;
+  for (int r = 0; r < rows; ++r) {
+    for (int c = 0; c < columns; ++c) {
+      visited[r][c] = false;
+      marked[r][c] = false;
+      is_mine[r][c] = false;
+      mine_cnt[r][c] = 0;
+    }
+  }
+  for (int r = 0; r < rows; ++r) {
+    for (int c = 0; c < columns; ++c) {
+      char ch; std::cin >> ch;
+      is_mine[r][c] = (ch == 'X');
+      if (is_mine[r][c]) ++total_mines;
+    }
+  }
+  fail_r = fail_c = -1;
+  compute_counts();
 }
 
 /**
  * @brief The definition of function VisitBlock(int, int)
- *
- * @details This function is designed to visit a block in the game map. We take the 3 * 3 game map above as an example.
- * At the beginning, if you call VisitBlock(0, 0), the return value would be 0 (game continues), and the game map would
- * be
- *     1??
- *     ???
- *     ???
- * If you call VisitBlock(0, 1) after that, the return value would be -1 (game ends and the players loses) , and the
- * game map would be
- *     1X?
- *     ???
- *     ???
- * If you call VisitBlock(0, 2), VisitBlock(2, 0), VisitBlock(1, 2) instead, the return value of the last operation
- * would be 1 (game ends and the player wins), and the game map would be
- *     1@1
- *     122
- *     01@
- *
- * @param r The row coordinate (0-based) of the block to be visited.
- * @param c The column coordinate (0-based) of the block to be visited.
- *
- * @note You should edit the value of game_state in this function. Precisely, edit it to
- *    0  if the game continues after visit that block, or that block has already been visited before.
- *    1  if the game ends and the player wins.
- *    -1 if the game ends and the player loses.
- *
- * @note For invalid operation, you should not do anything.
  */
 void VisitBlock(int r, int c) {
-  // TODO (student): Implement me!
+  if (game_state != 0) return;
+  if (!in_bounds(r, c)) return;
+  if (visited[r][c] || marked[r][c]) { game_state = 0; return; }
+  if (is_mine[r][c]) {
+    visited[r][c] = true;
+    fail_r = r; fail_c = c;
+    game_state = -1;
+    return;
+  }
+  if (mine_cnt[r][c] == 0) visit_zero_fill(r, c); else visited[r][c] = true;
+  check_win();
 }
 
 /**
  * @brief The definition of function MarkMine(int, int)
- *
- * @details This function is designed to mark a mine in the game map.
- * If the block being marked is a mine, show it as "@".
- * If the block being marked isn't a mine, END THE GAME immediately. (NOTE: This is not the same rule as the real
- * game) And you don't need to
- *
- * For example, if we use the same map as before, and the current state is:
- *     1?1
- *     ???
- *     ???
- * If you call MarkMine(0, 1), you marked the right mine. Then the resulting game map is:
- *     1@1
- *     ???
- *     ???
- * If you call MarkMine(1, 0), you marked the wrong mine(There's no mine in grid (1, 0)).
- * The game_state would be -1 and game ends immediately. The game map would be:
- *     1?1
- *     X??
- *     ???
- * This is different from the Minesweeper you've played. You should beware of that.
- *
- * @param r The row coordinate (0-based) of the block to be marked.
- * @param c The column coordinate (0-based) of the block to be marked.
- *
- * @note You should edit the value of game_state in this function. Precisely, edit it to
- *    0  if the game continues after visit that block, or that block has already been visited before.
- *    1  if the game ends and the player wins.
- *    -1 if the game ends and the player loses.
- *
- * @note For invalid operation, you should not do anything.
  */
 void MarkMine(int r, int c) {
-  // TODO (student): Implement me!
+  if (game_state != 0) return;
+  if (!in_bounds(r, c)) return;
+  if (visited[r][c]) { game_state = 0; return; }
+  if (marked[r][c]) { game_state = 0; return; }
+  marked[r][c] = true;
+  if (!is_mine[r][c]) {
+    fail_r = r; fail_c = c;
+    game_state = -1;
+    return;
+  }
+  check_win();
 }
 
 /**
  * @brief The definition of function AutoExplore(int, int)
- *
- * @details This function is designed to auto-visit adjacent blocks of a certain block.
- * See README.md for more information
- *
- * For example, if we use the same map as before, and the current map is:
- *     ?@?
- *     ?2?
- *     ??@
- * Then auto explore is available only for block (1, 1). If you call AutoExplore(1, 1), the resulting map will be:
- *     1@1
- *     122
- *     01@
- * And the game ends (and player wins).
  */
 void AutoExplore(int r, int c) {
-  // TODO (student): Implement me!
+  if (game_state != 0) return;
+  if (!in_bounds(r, c)) return;
+  if (!visited[r][c]) return;
+  if (is_mine[r][c]) return;
+  int need = mine_cnt[r][c];
+  int marked_around = 0;
+  for (int k = 0; k < 8; ++k) {
+    int nr = r + dr[k], nc = c + dc[k];
+    if (in_bounds(nr, nc) && marked[nr][nc]) ++marked_around;
+  }
+  if (marked_around != need) return;
+  for (int k = 0; k < 8; ++k) {
+    int nr = r + dr[k], nc = c + dc[k];
+    if (!in_bounds(nr, nc)) continue;
+    if (visited[nr][nc]) continue;
+    if (marked[nr][nc]) continue;
+    if (is_mine[nr][nc]) continue;
+    VisitBlock(nr, nc);
+    if (game_state != 0) return;
+  }
+  check_win();
 }
 
 /**
  * @brief The definition of function ExitGame()
- *
- * @details This function is designed to exit the game.
- * It outputs a line according to the result, and a line of two integers, visit_count and marked_mine_count,
- * representing the number of blocks visited and the number of marked mines taken respectively.
- *
- * @note If the player wins, we consider that ALL mines are correctly marked.
  */
 void ExitGame() {
-  // TODO (student): Implement me!
+  if (game_state == 1) {
+    std::cout << "YOU WIN!" << std::endl;
+  } else {
+    std::cout << "GAME OVER!" << std::endl;
+  }
+  int visit_count = 0;
+  int marked_mine_count = 0;
+  for (int r = 0; r < rows; ++r) {
+    for (int c = 0; c < columns; ++c) {
+      if (!is_mine[r][c] && visited[r][c]) ++visit_count;
+      if (marked[r][c] && is_mine[r][c]) ++marked_mine_count;
+    }
+  }
+  if (game_state == 1) marked_mine_count = total_mines;
+  std::cout << visit_count << " " << marked_mine_count << std::endl;
   exit(0);  // Exit the game immediately
 }
 
 /**
  * @brief The definition of function PrintMap()
- *
- * @details This function is designed to print the game map to stdout. We take the 3 * 3 game map above as an example.
- * At the beginning, if you call PrintMap(), the stdout would be
- *    ???
- *    ???
- *    ???
- * If you call VisitBlock(2, 0) and PrintMap() after that, the stdout would be
- *    ???
- *    12?
- *    01?
- * If you call VisitBlock(0, 1) and PrintMap() after that, the stdout would be
- *    ?X?
- *    12?
- *    01?
- * If the player visits all blocks without mine and call PrintMap() after that, the stdout would be
- *    1@1
- *    122
- *    01@
- * (You may find the global variable game_state useful when implementing this function.)
- *
- * @note Use std::cout to print the game map, especially when you want to try the advanced task!!!
  */
 void PrintMap() {
-  // TODO (student): Implement me!
+  for (int r = 0; r < rows; ++r) {
+    for (int c = 0; c < columns; ++c) {
+      char out = '?';
+      if (game_state == 1) {
+        if (is_mine[r][c]) out = '@';
+        else out = char('0' + mine_cnt[r][c]);
+      } else {
+        if (marked[r][c]) {
+          out = is_mine[r][c] ? '@' : 'X';
+        } else if (visited[r][c]) {
+          out = is_mine[r][c] ? 'X' : char('0' + mine_cnt[r][c]);
+        } else {
+          out = '?';
+        }
+      }
+      std::cout << out;
+    }
+    std::cout << std::endl;
+  }
 }
 
 #endif
